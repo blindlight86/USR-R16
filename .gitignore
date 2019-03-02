@@ -1,6 +1,10 @@
 *.pyc
 *.egg-info
 .tox
+.pypirc
+.vscode
+dist/
+build/
 
 # Windows image file caches
 Thumbs.db

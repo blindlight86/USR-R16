@@ -164,8 +164,6 @@ class USR16Protocol(asyncio.Protocol):
                         end = 19 + i
                         break
                 name = buf[19:end].decode()
-                # print(f'Host: {ip}')
-                # print(f'Device Name: {name}')
                 us.close()
                 break
             else:
@@ -365,17 +363,3 @@ async def create_usr_r16_client_connection(host=None, port=None, password=None,
     await client.setup()
 
     return client
-
-
-# usage
-
-
-async def connect():
-    client = await create_usr_r16_client_connection(host, port=8899, password='admin', loop=loop, timeout=60, reconnect_interval=10)
-
-host, name = USR16Protocol.discover()
-logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
-if host:
-    loop = asyncio.get_event_loop()
-    loop.create_task(connect())
-    loop.run_forever()
