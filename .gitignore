@@ -1,3 +1,7 @@
+*.pyc
+*.egg-info
+.tox
+
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
