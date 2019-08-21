@@ -4,6 +4,14 @@ import usr_r16
 
 async def connect():
     client = await usr_r16.create_usr_r16_client_connection(host, port=8899, password='admin', loop=loop, timeout=60, reconnect_interval=10)
+    status = await client.status(16)
+    print(status)
+    await asyncio.sleep(10)
+    status = await client.status(15)
+    print(status)
+    await asyncio.sleep(10)
+    status = await client.status(16)
+    print(status)
 
 host, name = usr_r16.USR16Protocol.discover()
 print(host)

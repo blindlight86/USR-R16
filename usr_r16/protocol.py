@@ -75,7 +75,9 @@ class USR16Protocol(asyncio.Protocol):
 
     def _handle_raw_packet(self, raw_packet):
         """Parse incoming packet."""
+        self._reset_timeout()
         states = {}
+        changes = []
         if len(raw_packet) == 2:
             if raw_packet.decode() == 'OK':
                 self.logger.info(f'Successful Authorization')
@@ -86,20 +88,28 @@ class USR16Protocol(asyncio.Protocol):
             return_cmd = raw_packet[3:4]
             if return_cmd in [b'\x81', b'\x82', b'\x83']:
                 if raw_packet[5] == 1:
-                    self.client.states[format(raw_packet[4], 'd')] = True
                     states[format(raw_packet[4], 'd')] = True
+                    if (self.client.states.get(format(raw_packet[4], 'd'), None) is not True):
+                        changes.append(format(raw_packet[4], 'd'))
+                        self.client.states[format(raw_packet[4], 'd')] = True
                 elif raw_packet[5] == 0:
-                    self.client.states[format(raw_packet[4], 'd')] = False
                     states[format(raw_packet[4], 'd')] = False
+                    if (self.client.states.get(format(raw_packet[4], 'd'), None) is not False):
+                        changes.append(format(raw_packet[4], 'd'))
+                        self.client.states[format(raw_packet[4], 'd')] = False
             elif return_cmd in [b'\x84', b'\x85']:
                 if raw_packet[4] == 1:
                     for switch in range(1, 17):
-                        self.client.states[format(switch, 'd')] = True
                         states[format(switch, 'd')] = True
+                        if (self.client.states.get(format(switch, 'd'), None) is not True):
+                            changes.append(format(switch, 'd'))
+                            self.client.states[format(switch, 'd')] = True
                 elif raw_packet[4] == 0:
                     for switch in range(1, 17):
-                        self.client.states[format(switch, 'd')] = False
                         states[format(switch, 'd')] = False
+                        if (self.client.states.get(format(switch, 'd'), None) is not False):
+                            changes.append(format(switch, 'd'))
+                            self.client.states[format(switch, 'd')] = False
             elif return_cmd in [b'\x86', b'\x8a']:
                 state1_8 = bin(raw_packet[4])[2:]
                 state9_16 = bin(raw_packet[5])[2:]
@@ -110,16 +120,23 @@ class USR16Protocol(asyncio.Protocol):
                 states_str = state1_8[::-1] + state9_16[::-1]
                 for i, state in enumerate(states_str):
                     if state == '1':
-                        self.client.states[format(i+1, 'd')] = True
                         states[format(i+1, 'd')] = True
+                        if (self.client.states.get(format(i+1, 'd'), None) is not True):
+                            changes.append(format(i+1, 'd'))
+                            self.client.states[format(i+1, 'd')] = True
                     elif state == '0':
-                        self.client.states[format(i+1, 'd')] = False
                         states[format(i+1, 'd')] = False
+                        if (self.client.states.get(format(i+1, 'd'), None) is not False):
+                            changes.append(format(i+1, 'd'))
+                            self.client.states[format(i+1, 'd')] = False
             elif return_cmd == b'\xff':
                 self.logger.debug(f'recevied heart packet')
             else:
                 self.logger.warning(
                     f'received unknown packet: {self._buffer.hex()}')
+        for switch in changes:
+            for status_cb in self.client.status_callbacks.get(switch, []):
+                status_cb(states[switch])
         if self.client.in_transaction:
             self.client.in_transaction = False
             self.client.active_packet = None
