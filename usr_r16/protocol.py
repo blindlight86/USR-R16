@@ -161,34 +161,6 @@ class USR16Protocol(asyncio.Protocol):
         if self.disconnect_callback:
             asyncio.ensure_future(self.disconnect_callback(), loop=self.loop)
 
-    @staticmethod
-    def discover():
-        """Discover local device"""
-        broadcast_message = 'ff010102'
-        udp_dest = ('<broadcast>', 1901)
-        us = socket(AF_INET, SOCK_DGRAM)
-        us.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-        us.sendto(bytes.fromhex(broadcast_message), udp_dest)
-        count = 0
-        ip = None
-        name = None
-        while count < 3:
-            (buf, address) = us.recvfrom(2048)
-            if buf:
-                ip = address[0]
-                for i, b in enumerate(buf[19:34]):
-                    if b == 0:
-                        end = 19 + i
-                        break
-                name = buf[19:end].decode()
-                us.close()
-                break
-            else:
-                count = count + 1
-        if count == 3:
-            print("No device found.")
-        return ip, name
-
     def send_packet(self):
         """Write next packet in send queue."""
         waiter, packet = self.client.waiters.popleft()
@@ -365,6 +337,57 @@ class USR16Client:
         states = await self._send(packet)
         return states
 
+
+class DiscoverProtocol:
+    """Discovery Protocol"""
+
+    def __init__(self, loop):
+        self.message = "ff010102"
+        self.port = 1901
+        self.loop = loop
+        self.transport = None
+        self.devices = asyncio.Future()
+        self.list = []
+
+    def connection_made(self, transport):
+        self.transport = transport
+        self.logger.warning('Send:', self.message)
+        self.transport.sendto(bytes.fromhex(self.message), ('<broadcast>', self.port))
+
+    def datagram_received(self, data, addr):
+        if data == bytes.fromhex(self.message):
+            self.logger.warning("Local Echo")
+        elif data[0] == 255 and data[1] == len(data):
+            ip = f'{data[5]}.{data[6]}.{data[7]}.{data[8]}'
+            name = data[19:35].decode("ascii").replace('\x00', '')
+            self.list.append((name, ip))
+            self.devices.set_result(self.list)
+            self.logger.warning(f'{name}: {ip}')
+
+    def error_received(self, exc):
+        self.logger.error('Error received:', exc)
+
+    def connection_lost(self, exc):
+        self.logger.warning("Socket closed, stop the event loop")
+        loop = asyncio.get_event_loop()
+        loop.stop()
+
+async def discover():
+    """Discover USR-R16 on local network"""
+    loop = asyncio.get_event_loop()
+    transport, protocol = await loop.create_datagram_endpoint(
+        lambda: DiscoverProtocol(loop),
+        local_addr=('0.0.0.0', 1901),
+        allow_broadcast=True)
+    try:
+        i = 0
+        while i < 254:
+            devices = await protocol.devices
+            i = i+1
+        transport.close()
+        return devices
+    except:
+        transport.close()
 
 async def create_usr_r16_client_connection(host=None, port=None, password=None,
                                            disconnect_callback=None,

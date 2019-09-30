@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
         name='usr-r16',
-        version='0.0.2',
+        version='0.0.3',
         description='Python client for USR-R16',
         long_description=open('README.md').read(),
         url='https://github.com/blindlight86/USR-R16',
