@@ -18,11 +18,19 @@ class USR16Protocol(asyncio.Protocol):
         self.disconnect_callback = disconnect_callback
         self._timeout = None
         self._cmd_timeout = None
+        self._keep_alive = None
 
     def connection_made(self, transport):
         """Initialize protocol transport."""
         self.transport = transport
         self._reset_timeout()
+
+    def _send_keepalive_packet(self):
+        """Send a keep alive packet."""
+        if not self.client.in_transaction:
+            packet = self.format_packet('0a')
+            self.logger.debug('sending keep alive packet')
+            self.transport.write(packet)
 
     def _reset_timeout(self):
         """Reset timeout for date keep alive."""
@@ -30,6 +38,11 @@ class USR16Protocol(asyncio.Protocol):
             self._timeout.cancel()
         self._timeout = self.loop.call_later(
             self.client.timeout, self.transport.close)
+        if self._keep_alive:
+            self._keep_alive.cancel()
+        self._keep_alive = self.loop.call_later(
+            self.client.keep_alive_interval,
+            self._send_keepalive_packet)
         self.logger.debug(f'timeout reset')
 
     def reset_cmd_timeout(self):
@@ -158,6 +171,8 @@ class USR16Protocol(asyncio.Protocol):
             self.logger.error('disconnected due to error')
         else:
             self.logger.info('disconnected because of close/abort.')
+        if self._keep_alive:
+            self._keep_alive.cancel()
         if self.disconnect_callback:
             asyncio.ensure_future(self.disconnect_callback(), loop=self.loop)
 
@@ -193,7 +208,8 @@ class USR16Client:
 
     def __init__(self, host, port=8899, password='admin',
                  disconnect_callback=None, reconnect_callback=None,
-                 loop=None, logger=None, timeout=10, reconnect_interval=10):
+                 loop=None, logger=None, timeout=10, reconnect_interval=10,
+                 keep_alive_interval=3):
         """Initialize the USR-R16 client wrapper."""
         if loop:
             self.loop = loop
@@ -215,6 +231,7 @@ class USR16Client:
         self.transport = None
         self.protocol = None
         self.is_connected = False
+        self.keep_alive_interval = keep_alive_interval
         self.waiters = deque()
         self.status_waiters = deque()
         self.active_transaction = None
@@ -341,10 +358,14 @@ class USR16Client:
 class DiscoverProtocol:
     """Discovery Protocol"""
 
-    def __init__(self, loop):
+    def __init__(self, loop, logger=None):
         self.message = "ff010102"
         self.port = 1901
         self.loop = loop
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
         self.transport = None
         self.devices = asyncio.Future()
         self.list = []
@@ -393,13 +414,15 @@ async def create_usr_r16_client_connection(host=None, port=None, password=None,
                                            disconnect_callback=None,
                                            reconnect_callback=None, loop=None,
                                            logger=None, timeout=None,
-                                           reconnect_interval=None):
+                                           reconnect_interval=None,
+                                           keep_alive_interval=None):
     """Create USR-R16 Client class."""
     client = USR16Client(host, port=port, password=password,
                          disconnect_callback=disconnect_callback,
                          reconnect_callback=reconnect_callback,
                          loop=loop, logger=logger,
-                         timeout=timeout, reconnect_interval=reconnect_interval)
+                         timeout=timeout, reconnect_interval=reconnect_interval,
+                         keep_alive_interval=keep_alive_interval)
     await client.setup()
 
     return client
