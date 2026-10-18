@@ -291,6 +291,9 @@ class USR16Client:
     async def handle_disconnect_callback(self):
         """Reconnect automatically unless stopping."""
         self.is_connected = False
+        self.active_transaction = None
+        self.in_transaction = False
+        self.active_packet = None
         if self.disconnect_callback:
             self.disconnect_callback()
         if self.reconnect:
